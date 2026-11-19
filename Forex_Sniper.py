@@ -151,7 +151,7 @@ elif page.startswith("2."):
         st.cache_data.clear()
         st.rerun()
     show_all = st.checkbox("Show all 60+ pairs (slower, can get blocked)", value=False)
-    main_symbols = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "USDZAR=X", "EURZAR=X", "GBPZAR=X", "XAUUSD", "XAGUSD", "BTC-USD", "ETH-USD", "US30", "NAS100"]
+    main_symbols = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "USDZAR=X", "EURZAR=X", "GBPZAR=X", "GC=F", "SI=F", "BTC-USD", "ETH-USD", "^DJI", "^IXIC"]`
     # Map friendly names for indices
     extra_symbols = [
         "USDCHF=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X",
