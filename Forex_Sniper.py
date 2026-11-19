@@ -33,20 +33,23 @@ period = st.sidebar.selectbox("Period", ["1d", "5d", "1mo"], index=0)
 interval = st.sidebar.selectbox("Interval", ["1m", "5m", "15m", "1h", "1d"], index=3)
  
 # Fix symbols Yahoo does not have
-SYMBOL_FIX = {
+SYMBOLS = {
+    "EURUSD": "EURUSD=X",
+    "GBPUSD": "GBPUSD=X",
+    "USDJPY": "USDJPY=X",
+    "USDZAR": "USDZAR=X",
+    "EURZAR": "EURZAR=X",
+    "GBPZAR": "GBPZAR=X",
     "XAUUSD": "GC=F",
-    "XAUUSD=X": "GC=F",
-    "GOLD": "GC=F",
     "XAGUSD": "SI=F",
-    "XAGUSD=X": "SI=F",
-    "SILVER": "SI=F",
-    "XAU": "GC=F",
-    "XAG": "SI=F",
+    "BTC-USD": "BTC-USD",
+    "ETH-USD": "ETH-USD",
+    "US30": "^DJI",
+    "NAS100": "^NDX",
 }
- 
 def clean_symbol(s):
     s = s.strip().upper()
-    return SYMBOL_FIX.get(s, s)
+    return SYMBOLS.get(s, s)
  
 @st.cache_data(ttl=300, show_spinner=False)
 def get_data(symbol, period, interval):
