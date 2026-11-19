@@ -45,8 +45,10 @@ def get_data(symbol, period, interval):
     delta = df['Close'].diff()
     gain = delta.where(delta > 0, 0).rolling(14).mean()
     loss = -delta.where(delta < 0, 0).rolling(14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain/loss)))
+    df['RSI'] = 100 - (100 / (1 + (gain / loss.replace(0, np.nan))))
+    df['RSI'] = df['RSI'].fillna(50.0)
     last = df.iloc[-1]
+    rsi = float(last['RSI']) if pd.notna(last['RSI']) else 50.0
     price = float(last['Close']); ema20=float(last['EMA20']); ema50=float(last['EMA50']); rsi=float(last['RSI']); atr=float(last['ATR'])
     if price > ema20 > ema50:
         signal = "🟢 BUY"
