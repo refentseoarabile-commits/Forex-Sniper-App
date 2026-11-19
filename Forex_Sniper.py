@@ -28,16 +28,45 @@ st.sidebar.title("🎯 FOREX SNIPER")
 page = st.sidebar.radio("Go to:", ["1. MAIN - Start Monitor", "2. DASHBOARD", "3. ECONOMIC CALENDAR"])
 st.sidebar.divider()
 st.session_state.symbol = st.sidebar.text_input("Type any symbol", value=st.session_state.symbol).strip().upper()
-st.sidebar.caption("Examples: EURUSD=X, USDZAR=X, XAUUSD=X, BTC-USD, ETH-USD")
+st.sidebar.caption("Examples: EURUSD=X, USDZAR=X, XAUUSD, BTC-USD, ETH-USD")
 period = st.sidebar.selectbox("Period", ["1d", "5d", "1mo"], index=0)
 interval = st.sidebar.selectbox("Interval", ["1m", "5m", "15m", "1h", "1d"], index=3)
  
+# Fix symbols Yahoo does not have
+SYMBOL_FIX = {
+    "XAUUSD": "GC=F",
+    "XAUUSD=X": "GC=F",
+    "GOLD": "GC=F",
+    "XAGUSD": "SI=F",
+    "XAGUSD=X": "SI=F",
+    "SILVER": "SI=F",
+    "XAU": "GC=F",
+    "XAG": "SI=F",
+}
+ 
+def clean_symbol(s):
+    s = s.strip().upper()
+    return SYMBOL_FIX.get(s, s)
+ 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_data(symbol, period, interval):
-    df = yf.download(symbol, period=period, interval=interval, progress=False)
+    symbol = clean_symbol(symbol)
+    df = None
+    # Try 2 times, Yahoo blocks if we rush it
+    for attempt in range(2):
+        try:
+            df = yf.download(symbol, period=period, interval=interval, progress=False, auto_adjust=False, threads=False)
+            if df is not None and len(df) > 20:
+                break
+        except Exception:
+            pass
+        time.sleep(1)
     if df is None or len(df) == 0:
         return None
     if isinstance(df.columns, pd.MultiIndex):
         df.columns = df.columns.get_level_values(0)
+    if "Close" not in df.columns or len(df) < 20:
+        return None
     df['EMA20'] = df['Close'].ewm(span=20).mean()
     df['EMA50'] = df['Close'].ewm(span=50).mean()
     df['TR'] = np.maximum(df['High']-df['Low'], np.maximum(abs(df['High']-df['Close'].shift(1)), abs(df['Low']-df['Close'].shift(1))))
@@ -45,11 +74,18 @@ def get_data(symbol, period, interval):
     delta = df['Close'].diff()
     gain = delta.where(delta > 0, 0).rolling(14).mean()
     loss = -delta.where(delta < 0, 0).rolling(14).mean()
-    df['RSI'] = 100 - (100 / (1 + (gain / loss.replace(0, np.nan))))
+    rs = gain / loss.replace(0, np.nan)
+    df['RSI'] = 100 - (100 / (1 + rs))
     df['RSI'] = df['RSI'].fillna(50.0)
     last = df.iloc[-1]
+    price = float(last['Close'])
+    ema20 = float(last['EMA20'])
+    ema50 = float(last['EMA50'])
     rsi = float(last['RSI']) if pd.notna(last['RSI']) else 50.0
-    price = float(last['Close']); ema20=float(last['EMA20']); ema50=float(last['EMA50']); rsi=float(last['RSI']); atr=float(last['ATR'])
+    atr = float(last['ATR']) if pd.notna(last['ATR']) else 0.0
+    # If ATR is still missing, use 0.1% of price so SL/TP never breaks
+    if atr == 0 or np.isnan(atr):
+        atr = price * 0.001
     if price > ema20 > ema50:
         signal = "🟢 BUY"
     elif price < ema20 < ema50:
@@ -73,6 +109,7 @@ if page.startswith("1."):
     if c2.button("⏸️ STOP", use_container_width=True):
         st.session_state.monitoring = False
     if c3.button("🔄 REFRESH NOW", use_container_width=True):
+        st.cache_data.clear()
         st.rerun()
     auto = st.checkbox("🔁 Auto-refresh every 60 seconds", value=True)
     if not st.session_state.monitoring:
@@ -82,7 +119,7 @@ if page.startswith("1."):
     def show_live():
         result = get_data(st.session_state.symbol, period, interval)
         if result is None:
-            st.error(f"No data for {st.session_state.symbol}")
+            st.error(f"No data for {st.session_state.symbol} - Yahoo is busy, wait 60 sec and press REFRESH NOW")
             return
         df, price, ema20, ema50, rsi, atr, signal, sl, tp1, tp2 = result
         st.subheader(f"🔴 LIVE SNIPER SIGNAL - {st.session_state.symbol} - {signal}")
@@ -106,28 +143,39 @@ if page.startswith("1."):
 elif page.startswith("2."):
     st.title("📊 DASHBOARD - All Pairs")
     st.write("All symbols - Forex, Metals, Crypto, Indices, Stocks")
+    st.info("Dashboard now loads 12 pairs at a time to avoid Yahoo blocking you. Use the button below for more.")
     if st.button("🔄 REFRESH DASHBOARD"):
+        st.cache_data.clear()
         st.rerun()
-    symbols = [
-        "EURUSD=X", "GBPUSD=X", "USDJPY=X", "USDCHF=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X",
+    show_all = st.checkbox("Show all 60+ pairs (slower, can get blocked)", value=False)
+    main_symbols = ["EURUSD=X", "GBPUSD=X", "USDJPY=X", "USDZAR=X", "EURZAR=X", "GBPZAR=X", "XAUUSD", "XAGUSD", "BTC-USD", "ETH-USD", "US30", "NAS100"]
+    # Map friendly names for indices
+    extra_symbols = [
+        "USDCHF=X", "AUDUSD=X", "USDCAD=X", "NZDUSD=X",
         "EURGBP=X", "EURJPY=X", "GBPJPY=X", "AUDJPY=X", "EURAUD=X", "EURCHF=X", "GBPCHF=X", "AUDCAD=X", "NZDJPY=X", "CADJPY=X", "CHFJPY=X", "EURCAD=X", "GBPCAD=X", "AUDNZD=X", "EURNZD=X", "GBPAUD=X",
-        "USDZAR=X", "EURZAR=X", "GBPZAR=X", "USDMXN=X", "USDTRY=X", "USDBRL=X", "USDINR=X", "USDPLN=X", "USDSEK=X", "USDNOK=X", "USDSGD=X", "USDHKD=X",
-        "XAUUSD=X", "XAGUSD=X", "GC=F", "SI=F", "CL=F", "BZ=F",
-        "BTC-USD", "ETH-USD", "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD", "LTC-USD", "BNB-USD",
+        "USDMXN=X", "USDTRY=X", "USDBRL=X", "USDINR=X", "USDPLN=X", "USDSEK=X", "USDNOK=X", "USDSGD=X", "USDHKD=X",
+        "GC=F", "SI=F", "CL=F", "BZ=F",
+        "SOL-USD", "XRP-USD", "DOGE-USD", "ADA-USD", "LTC-USD", "BNB-USD",
         "^DJI", "^GSPC", "^IXIC", "^FTSE", "^GDAXI",
         "AAPL", "TSLA", "NVDA", "MSFT", "AMZN", "META"
     ]
+    symbols = main_symbols + extra_symbols if show_all else main_symbols
     rows = []
-    for s in symbols:
+    progress = st.progress(0)
+    for i, s in enumerate(symbols):
         try:
             r = get_data(s, "1d", "1h")
             if r:
                 df, price, ema20, ema50, rsi, atr, signal, sl, tp1, tp2 = r
                 rows.append({"Pair": s, "Price": round(price,5), "Signal": signal, "RSI": round(rsi,1), "SL": round(sl,5), "TP1": round(tp1,5), "TP2": round(tp2,5)})
-        except:
+            else:
+                rows.append({"Pair": s, "Price": "-", "Signal": "No data - retry", "RSI": "-", "SL": "-", "TP1": "-", "TP2": "-"})
+        except Exception:
             rows.append({"Pair": s, "Price": "-", "Signal": "Error", "RSI": "-", "SL": "-", "TP1": "-", "TP2": "-"})
+        progress.progress((i+1)/len(symbols))
+        time.sleep(0.2)
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
-    st.caption("Dashboard uses 1d / 1h. First load 30-45 sec - normal with 60+ symbols.")
+    st.caption("Dashboard uses 1d / 1h. Cached for 5 minutes to avoid Yahoo rate-limit.")
  
 else:
     st.title("📅 ECONOMIC CALENDAR")
