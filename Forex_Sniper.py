@@ -4,7 +4,12 @@ import pandas as pd
 import numpy as np
 import time
  
-st.set_page_config(page_title="FOREX SNIPER", layout="wide", page_icon="🎯")
+   st.set_page_config(
+       page_title="FOREX SNIPER",
+       page_icon="🐺",
+       layout="wide"
+   )
+ 
  
 # --- DARK SNIPER STYLE LIKE THE PHONE MOCKUP ---
 st.markdown("""
